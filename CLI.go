@@ -4,7 +4,7 @@ import (
 	"WebCLI/Group"
 	"WebCLI/Task"
 	"encoding/json"
-	"fmt"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -15,9 +15,14 @@ import (
 var Groups []Group.Group
 var Tasks []Task.Task
 
+var jsonGroups []byte
+
 func main() {
-	http.HandleFunc("/groups", GetGroups)
-	http.HandleFunc("/groups", GetGroups)
+	jsonGroups = JsonGroupInput()
+	router := mux.NewRouter()
+	router.HandleFunc("/groups", GetGroups).Methods(http.MethodGet)
+
+	http.ListenAndServe(":8181", router)
 
 }
 
@@ -68,22 +73,27 @@ func JsonTaskOutput() {
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
-	sort := req.URL.Query().Get("sort")
-	limit, err := strconv.Atoi(req.URL.Query().Get("limit"))
-	if err != nil{
+	req.ParseForm()
+	sort, srtOk := req.Form["sort"]
+	limitstr, limOk := req.Form["limit"]
+	var limit int
+	if !limOk {
 		limit = 0
+	} else {
+		limit, _ = strconv.Atoi(limitstr[0])
+		_ = limit
 	}
-	if sort == ""{
-		jsonGr := JsonGroupInput()
+
+	if !srtOk {
 		var unJsonedGr []Group.Group
-		_ = json.Unmarshal(JsonTaskInput(), &unJsonedGr)
-		if err != nil{
+		_ = json.Unmarshal(jsonGroups, &unJsonedGr)
+		if !limOk {
 			limit = len(unJsonedGr)
 		}
 		unJsonedGr = unJsonedGr[:limit]
-		fmt.Fprint(w, jsonGr)
-	}else {
-		GetGroupsSort(&w, req, sort, limit)
+		json.NewEncoder(w).Encode(unJsonedGr)
+	} else {
+		GetGroupsSort(&w, req, sort[0], limit)
 	}
 
 }
@@ -92,15 +102,15 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
-	_ = json.Unmarshal(JsonTaskInput(), &unJsonedGr)
-	if limit == 0{
+	_ = json.Unmarshal(jsonGroups, &unJsonedGr)
+	if limit == 0 {
 		limit = len(unJsonedGr)
 	}
-	sort2.SliceStable(&unJsonedGr, func(i, j int) bool { return unJsonedGr[i].GroupName < unJsonedGr[j].GroupName })
+	sort2.SliceStable(unJsonedGr, func(i, j int) bool { return unJsonedGr[i].GroupName < unJsonedGr[j].GroupName })
 
 	//create the parents and childs subslices
 	for i := 0; i < len(unJsonedGr); i++ {
-		if unJsonedGr[i].GroupID == 0 {
+		if unJsonedGr[i].ParentID == 0 {
 			parentsGr = append(parentsGr, unJsonedGr[i])
 		} else {
 			childGr = append(childGr, unJsonedGr[i])
@@ -108,28 +118,24 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 	}
 
 	//create the childs and grandchilds subslices
-	for i := 0; i < len(childGr); i++{
-		for j := 0; j < len(parentsGr); j++{
-			if (childGr[i].ParentID == parentsGr[j].GroupID) && (parentsGr[j].ParentID != 0){
-				grandChildsGr = append(grandChildsGr, childGr[i])
-			}else{
-				childsGr = append(childsGr, childGr[i])
-			}
+	for i := 0; i < len(childGr); i++ {
+		if grContain(parentsGr, childGr[i]) {
+			childsGr = append(childsGr, childGr[i])
+		} else {
+			grandChildsGr = append(grandChildsGr, childGr[i])
 		}
 	}
 
 	switch sort {
 	case "name":
 		subUnJsonedGr := unJsonedGr[:limit]
-		jsonGr, _ := json.MarshalIndent(&subUnJsonedGr, "", "  ")
-		fmt.Fprint(*w, string(jsonGr))
+		json.NewEncoder(*w).Encode(subUnJsonedGr)
 		break
 	case "parents_first":
 		unJsonedGr = append(parentsGr, childsGr...)
 		unJsonedGr = append(unJsonedGr, grandChildsGr...)
 		subUnJsonedGr := unJsonedGr[:limit]
-		jsonGr, _ := json.MarshalIndent(&subUnJsonedGr, "", "  ")
-		fmt.Fprint(*w, string(jsonGr))
+		json.NewEncoder(*w).Encode(subUnJsonedGr)
 		break
 	case "parent_with_childs":
 		var pwcGrJson []Group.Group
@@ -137,26 +143,31 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		for i := 0; i < len(parentsGr); i++ {
 			pwcGrJson = append(pwcGrJson, parentsGr[i])
 
-			for j := 0; j < len(childGr); j++ {
+			for j := 0; j < len(childsGr); j++ {
 				if childsGr[j].ParentID == parentsGr[i].GroupID {
 					pwcGrJson = append(pwcGrJson, childsGr[j])
 
-					for k := 0; k < len(grandChildsGr); k++{
-						if grandChildsGr[k].ParentID == childsGr[j].GroupID{
+					for k := 0; k < len(grandChildsGr); k++ {
+						if grandChildsGr[k].ParentID == childsGr[j].GroupID {
 							pwcGrJson = append(pwcGrJson, grandChildsGr[k])
 						}
 					}
 				}
 			}
 		}
-		jsonGr, _ := json.MarshalIndent(&pwcGrJson, "", "  ")
-		fmt.Fprint(*w, string(jsonGr))
+		json.NewEncoder(*w).Encode(pwcGrJson)
 		break
 	default:
 		(*w).WriteHeader(http.StatusBadRequest)
 		break
 	}
+}
 
+func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
+	for i := 0; i < len(arrGr); i++ {
+		result = result || arrGr[i].GroupID == contGr.ParentID
+	}
+	return result
 }
 
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
