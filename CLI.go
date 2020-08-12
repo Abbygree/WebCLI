@@ -25,6 +25,7 @@ func main() {
 	router.HandleFunc("/group/top_parents", GetGroupTopParents).Methods(http.MethodGet)
 	router.HandleFunc("/group/{id}", GetGroupByID).Methods(http.MethodGet)
 	router.HandleFunc("/group/childs/{id}", GetGroupChildsByID).Methods(http.MethodGet)
+	router.HandleFunc("/group/new", PostNewGroup).Methods(http.MethodPost)
 	http.ListenAndServe(":8181", router)
 
 }
@@ -217,7 +218,21 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 }
 
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
-
+	var postGr Group.Group
+	err := json.NewDecoder(req.Body).Decode(&postGr)
+	if err != nil {
+		log.Fatal("Cannot decode from JSON", err)
+	}
+	if postGr.GroupName == "" {
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sort2.SliceStable(Groups, func(i, j int) bool {
+		return Groups[i].GroupID < Groups[j].GroupID
+	})
+	postGr.GroupID = Groups[len(Groups)-1].GroupID + 1
+	Groups = append(Groups, postGr)
+	(w).WriteHeader(http.StatusCreated)
 }
 
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
