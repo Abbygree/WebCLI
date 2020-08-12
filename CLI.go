@@ -4,6 +4,7 @@ import (
 	"WebCLI/Group"
 	"WebCLI/Task"
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
@@ -18,15 +19,17 @@ var Tasks []Task.Task
 var jsonGroups []byte
 
 func main() {
-	jsonGroups = JsonGroupInput()
+	JsonGroupInput()
 	router := mux.NewRouter()
 	router.HandleFunc("/groups", GetGroups).Methods(http.MethodGet)
-
+	router.HandleFunc("/group/top_parents", GetGroupTopParents).Methods(http.MethodGet)
+	router.HandleFunc("/group/{id}", GetGroupByID).Methods(http.MethodGet)
+	router.HandleFunc("/group/childs/{id}", GetGroupChildsByID).Methods(http.MethodGet)
 	http.ListenAndServe(":8181", router)
 
 }
 
-func JsonGroupInput() []byte {
+func JsonGroupInput() {
 	jsonGr, err := ioutil.ReadFile("Groups.json")
 	if err != nil {
 		log.Fatal("Cannot read data from file", err)
@@ -35,7 +38,6 @@ func JsonGroupInput() []byte {
 	if err != nil {
 		log.Fatal("Cannot decode from JSON", err)
 	}
-	return jsonGr
 }
 
 func JsonGroupOutput() {
@@ -85,12 +87,10 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if !srtOk {
-		var unJsonedGr []Group.Group
-		_ = json.Unmarshal(jsonGroups, &unJsonedGr)
 		if !limOk {
-			limit = len(unJsonedGr)
+			limit = len(Groups)
 		}
-		unJsonedGr = unJsonedGr[:limit]
+		unJsonedGr := Groups[:limit]
 		json.NewEncoder(w).Encode(unJsonedGr)
 	} else {
 		GetGroupsSort(&w, req, sort[0], limit)
@@ -102,10 +102,10 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
-	_ = json.Unmarshal(jsonGroups, &unJsonedGr)
 	if limit == 0 {
-		limit = len(unJsonedGr)
+		limit = len(Groups)
 	}
+	unJsonedGr = Groups
 	sort2.SliceStable(unJsonedGr, func(i, j int) bool { return unJsonedGr[i].GroupName < unJsonedGr[j].GroupName })
 
 	//create the parents and childs subslices
@@ -171,15 +171,49 @@ func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
 }
 
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
-
+	var topParentsGroups []Group.Group
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].ParentID == 0 {
+			topParentsGroups = append(topParentsGroups, Groups[i])
+		}
+	}
+	json.NewEncoder(w).Encode(topParentsGroups)
 }
 
 func GetGroupByID(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		fmt.Println("Cannot convert id to int")
+	}
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].GroupID == id {
+			json.NewEncoder(w).Encode(Groups[i])
+			return
+		}
+	}
+	(w).WriteHeader(http.StatusNotFound)
 
 }
 
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
-
+	var exist bool
+	vars := mux.Vars(req)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		fmt.Println("Cannot convert id to int")
+	}
+	var childs []Group.Group
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].ParentID == id {
+			childs = append(childs, Groups[i])
+			exist = true
+		}
+	}
+	json.NewEncoder(w).Encode(childs)
+	if !exist {
+		(w).WriteHeader(http.StatusNotFound)
+	}
 }
 
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
