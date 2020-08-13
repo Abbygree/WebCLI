@@ -6,73 +6,29 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
-	"io/ioutil"
 	"log"
 	"net/http"
 	sort2 "sort"
 	"strconv"
 )
 
-var Groups []Group.Group
 var Tasks []Task.Task
-
-var jsonGroups []byte
+var Groups []Group.Group
 
 func main() {
-	JsonGroupInput()
+	/*var grFileReadErr, grJsonDecodeErr, taskFileReadErr, taskJsonDecodeErr error*/
+	/*grFileReadErr, grJsonDecodeErr, */
+	Groups = Group.JsonGroupInput()
+	/*taskFileReadErr, taskJsonDecodeErr, Tasks = Task.JsonTaskInput()*/
 	router := mux.NewRouter()
 	router.HandleFunc("/groups", GetGroups).Methods(http.MethodGet)
 	router.HandleFunc("/group/top_parents", GetGroupTopParents).Methods(http.MethodGet)
 	router.HandleFunc("/group/{id}", GetGroupByID).Methods(http.MethodGet)
 	router.HandleFunc("/group/childs/{id}", GetGroupChildsByID).Methods(http.MethodGet)
 	router.HandleFunc("/group/new", PostNewGroup).Methods(http.MethodPost)
+	router.HandleFunc("/group/{id}", PutGroupByID).Methods(http.MethodPut)
 	http.ListenAndServe(":8181", router)
 
-}
-
-func JsonGroupInput() {
-	jsonGr, err := ioutil.ReadFile("Groups.json")
-	if err != nil {
-		log.Fatal("Cannot read data from file", err)
-	}
-	err = json.Unmarshal(jsonGr, &Groups)
-	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
-	}
-}
-
-func JsonGroupOutput() {
-	btResult, err := json.MarshalIndent(&Groups, "", "  ")
-	if err != nil {
-		log.Fatal("Cannot encode to JSON", err)
-	}
-	err = ioutil.WriteFile("Groups.json", btResult, 0777)
-	if err != nil {
-		log.Fatal("Cannot write data to file", err)
-	}
-}
-
-func JsonTaskInput() []byte {
-	jsonGr, err := ioutil.ReadFile("Tasks.json")
-	if err != nil {
-		log.Fatal("Cannot read data from file", err)
-	}
-	err = json.Unmarshal(jsonGr, &Groups)
-	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
-	}
-	return jsonGr
-}
-
-func JsonTaskOutput() {
-	btResult, err := json.MarshalIndent(&Tasks, "", "  ")
-	if err != nil {
-		log.Fatal("Cannot encode to JSON", err)
-	}
-	err = ioutil.WriteFile("Tasks.json", btResult, 0777)
-	if err != nil {
-		log.Fatal("Cannot write data to file", err)
-	}
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
@@ -186,14 +142,17 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
 		fmt.Println("Cannot convert id to int")
+		(w).WriteHeader(http.StatusNotFound)
 	}
-	for i := 0; i < len(Groups); i++ {
-		if Groups[i].GroupID == id {
-			json.NewEncoder(w).Encode(Groups[i])
-			return
-		}
+
+	index := sort2.Search(len(Groups), func(i int) bool {
+		return Groups[i].GroupID == id
+	})
+	if index == len(Groups) {
+		(w).WriteHeader(http.StatusNotFound)
+		return
 	}
-	(w).WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(Groups[index])
 
 }
 
@@ -203,6 +162,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
 		fmt.Println("Cannot convert id to int")
+		(w).WriteHeader(http.StatusNotFound)
 	}
 	var childs []Group.Group
 	for i := 0; i < len(Groups); i++ {
@@ -236,7 +196,38 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 }
 
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	id, err := strconv.Atoi(vars["id"])
 
+	if err != nil {
+		fmt.Println("Cannot convert id to int")
+		(w).WriteHeader(http.StatusBadRequest)
+	}
+
+	var postGr Group.Group
+	err = json.NewDecoder(req.Body).Decode(&postGr)
+	if err != nil {
+		log.Fatal("Cannot decode from JSON", err)
+		return
+	}
+	if postGr.GroupName == "" {
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	index := sort2.Search(len(Groups), func(i int) bool {
+		return Groups[i].GroupID == id
+	})
+	if index == len(Groups) {
+		(w).WriteHeader(http.StatusNotFound)
+		return
+	}
+	Groups[index] = postGr
+	err = json.NewEncoder(w).Encode(Groups[index])
+	if err != nil {
+		log.Fatal("Cannot decode from JSON", err)
+		return
+	}
 }
 
 func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
