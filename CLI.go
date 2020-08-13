@@ -86,13 +86,21 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 	switch sort {
 	case "name":
 		subUnJsonedGr := unJsonedGr[:limit]
-		json.NewEncoder(*w).Encode(subUnJsonedGr)
+		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
+		if err != nil {
+			log.Fatal("Cannot decode from JSON", err)
+			return
+		}
 		break
 	case "parents_first":
 		unJsonedGr = append(parentsGr, childsGr...)
 		unJsonedGr = append(unJsonedGr, grandChildsGr...)
 		subUnJsonedGr := unJsonedGr[:limit]
-		json.NewEncoder(*w).Encode(subUnJsonedGr)
+		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
+		if err != nil {
+			log.Fatal("Cannot decode from JSON", err)
+			return
+		}
 		break
 	case "parent_with_childs":
 		var pwcGrJson []Group.Group
@@ -101,10 +109,12 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 			pwcGrJson = append(pwcGrJson, parentsGr[i])
 
 			for j := 0; j < len(childsGr); j++ {
+				//Search childs
 				if childsGr[j].ParentID == parentsGr[i].GroupID {
 					pwcGrJson = append(pwcGrJson, childsGr[j])
 
 					for k := 0; k < len(grandChildsGr); k++ {
+						//Search grandschilds
 						if grandChildsGr[k].ParentID == childsGr[j].GroupID {
 							pwcGrJson = append(pwcGrJson, grandChildsGr[k])
 						}
@@ -112,7 +122,11 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 				}
 			}
 		}
-		json.NewEncoder(*w).Encode(pwcGrJson)
+		err := json.NewEncoder(*w).Encode(pwcGrJson)
+		if err != nil {
+			log.Fatal("Cannot decode from JSON", err)
+			return
+		}
 		break
 	default:
 		(*w).WriteHeader(http.StatusBadRequest)
@@ -127,6 +141,7 @@ func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
 	return result
 }
 
+//Output group with GroupID == 0
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 	var topParentsGroups []Group.Group
 	for i := 0; i < len(Groups); i++ {
@@ -134,9 +149,14 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 			topParentsGroups = append(topParentsGroups, Groups[i])
 		}
 	}
-	json.NewEncoder(w).Encode(topParentsGroups)
+	err := json.NewEncoder(w).Encode(topParentsGroups)
+	if err != nil {
+		log.Fatal("Cannot decode from JSON", err)
+		return
+	}
 }
 
+//Output group with GroupID == id
 func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
@@ -144,7 +164,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 		fmt.Println("Cannot convert id to int")
 		(w).WriteHeader(http.StatusNotFound)
 	}
-
+	//ascending sort
 	index := sort2.Search(len(Groups), func(i int) bool {
 		return Groups[i].GroupID == id
 	})
@@ -156,6 +176,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 
 }
 
+//Output chids of group with GroupID == id
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	var exist bool
 	vars := mux.Vars(req)
@@ -164,6 +185,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 		fmt.Println("Cannot convert id to int")
 		(w).WriteHeader(http.StatusNotFound)
 	}
+	//Search chids of group with GroupID == id
 	var childs []Group.Group
 	for i := 0; i < len(Groups); i++ {
 		if Groups[i].ParentID == id {
@@ -171,13 +193,20 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 			exist = true
 		}
 	}
-	json.NewEncoder(w).Encode(childs)
+	//Encode and output found group
+	err = json.NewEncoder(w).Encode(childs)
+	if err != nil {
+		log.Fatal("Cannot decode from JSON", err)
+		return
+	}
 	if !exist {
 		(w).WriteHeader(http.StatusNotFound)
 	}
 }
 
+//Input new group
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
+	//Decode request body to Group type
 	var postGr Group.Group
 	err := json.NewDecoder(req.Body).Decode(&postGr)
 	if err != nil {
@@ -187,14 +216,17 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 		(w).WriteHeader(http.StatusBadRequest)
 		return
 	}
+	//ascending sort
 	sort2.SliceStable(Groups, func(i, j int) bool {
 		return Groups[i].GroupID < Groups[j].GroupID
 	})
+	//Input new group in Groups
 	postGr.GroupID = Groups[len(Groups)-1].GroupID + 1
 	Groups = append(Groups, postGr)
 	(w).WriteHeader(http.StatusCreated)
 }
 
+////Change group with GroupID == id
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
@@ -203,7 +235,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		fmt.Println("Cannot convert id to int")
 		(w).WriteHeader(http.StatusBadRequest)
 	}
-
+	//Decode request body to Group type
 	var postGr Group.Group
 	err = json.NewDecoder(req.Body).Decode(&postGr)
 	if err != nil {
@@ -214,7 +246,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		(w).WriteHeader(http.StatusBadRequest)
 		return
 	}
-
+	//Search group with GroupID == id index
 	index := sort2.Search(len(Groups), func(i int) bool {
 		return Groups[i].GroupID == id
 	})
@@ -222,6 +254,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		(w).WriteHeader(http.StatusNotFound)
 		return
 	}
+	//Encode and output found group
 	Groups[index] = postGr
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
