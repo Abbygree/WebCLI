@@ -13,7 +13,7 @@ type Group struct {
 	ParentID         int    `json:"parent_id"`
 }
 
-func JsonGroupInput() ( /*fileReadErr error, jsonDecodeErr error, */ readGr []Group) {
+func JsonGroupInput() (readGr []Group) {
 	jsonGr, fileReadErr := ioutil.ReadFile("Groups.json")
 	if fileReadErr != nil {
 		log.Fatal("Cannot read data from file", fileReadErr)
@@ -22,10 +22,10 @@ func JsonGroupInput() ( /*fileReadErr error, jsonDecodeErr error, */ readGr []Gr
 	if jsonDecodeErr != nil {
 		log.Fatal("Cannot decode from JSON", jsonDecodeErr)
 	}
-	return /*fileReadErr, jsonDecodeErr,*/ readGr
+	return readGr
 }
 
-func JsonGroupOutput(writeGr []Group) /*(fileWriteErr error, jsonEncodeErr error)*/ {
+func JsonGroupOutput(writeGr []Group) {
 	btResult, fileWriteErr := json.MarshalIndent(&writeGr, "", "  ")
 	if fileWriteErr != nil {
 		log.Fatal("Cannot encode to JSON", fileWriteErr)
@@ -34,5 +34,4 @@ func JsonGroupOutput(writeGr []Group) /*(fileWriteErr error, jsonEncodeErr error
 	if jsonEncodeErr != nil {
 		log.Fatal("Cannot write data to file", jsonEncodeErr)
 	}
-	/*return fileWriteErr, jsonEncodeErr*/
 }

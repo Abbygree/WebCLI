@@ -16,10 +16,9 @@ var Tasks []Task.Task
 var Groups []Group.Group
 
 func main() {
-	/*var grFileReadErr, grJsonDecodeErr, taskFileReadErr, taskJsonDecodeErr error*/
-	/*grFileReadErr, grJsonDecodeErr, */
 	Groups = Group.JsonGroupInput()
-	/*taskFileReadErr, taskJsonDecodeErr, Tasks = Task.JsonTaskInput()*/
+	Tasks = Task.JsonTaskInput()
+	fmt.Println()
 	router := mux.NewRouter()
 	router.HandleFunc("/groups", GetGroups).Methods(http.MethodGet)
 	router.HandleFunc("/group/top_parents", GetGroupTopParents).Methods(http.MethodGet)
@@ -27,8 +26,10 @@ func main() {
 	router.HandleFunc("/group/childs/{id}", GetGroupChildsByID).Methods(http.MethodGet)
 	router.HandleFunc("/group/new", PostNewGroup).Methods(http.MethodPost)
 	router.HandleFunc("/group/{id}", PutGroupByID).Methods(http.MethodPut)
+	router.HandleFunc("/group/{id}", DeleteGroupByID).Methods(http.MethodDelete)
+	router.HandleFunc("/tasks", GetTasksSort).Methods(http.MethodGet)
 	http.ListenAndServe(":8181", router)
-
+	defer Group.JsonGroupOutput(Groups)
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
@@ -37,18 +38,22 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	limitstr, limOk := req.Form["limit"]
 	var limit int
 	if !limOk {
-		limit = 0
+		limit = len(Groups)
 	} else {
 		limit, _ = strconv.Atoi(limitstr[0])
-		_ = limit
+		if (limit > len(Groups)) || (limit == 0) {
+			limit = len(Groups)
+		}
 	}
 
 	if !srtOk {
-		if !limOk {
-			limit = len(Groups)
-		}
 		unJsonedGr := Groups[:limit]
-		json.NewEncoder(w).Encode(unJsonedGr)
+		w.Header().Set("content-type", "application/json")
+		err := json.NewEncoder(w).Encode(unJsonedGr)
+		if err != nil {
+			log.Fatal("Cannot decode from JSON", err)
+			return
+		}
 	} else {
 		GetGroupsSort(&w, req, sort[0], limit)
 	}
@@ -59,9 +64,6 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
-	if limit == 0 {
-		limit = len(Groups)
-	}
 	unJsonedGr = Groups
 	sort2.SliceStable(unJsonedGr, func(i, j int) bool { return unJsonedGr[i].GroupName < unJsonedGr[j].GroupName })
 
@@ -86,6 +88,7 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 	switch sort {
 	case "name":
 		subUnJsonedGr := unJsonedGr[:limit]
+		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
 		if err != nil {
 			log.Fatal("Cannot decode from JSON", err)
@@ -96,7 +99,8 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		unJsonedGr = append(parentsGr, childsGr...)
 		unJsonedGr = append(unJsonedGr, grandChildsGr...)
 		subUnJsonedGr := unJsonedGr[:limit]
-		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
+		(*w).Header().Set("content-type", "application/json")
+		err := json.NewEncoder(*w).Encode(subUnJsonedGr[:limit])
 		if err != nil {
 			log.Fatal("Cannot decode from JSON", err)
 			return
@@ -122,7 +126,8 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 				}
 			}
 		}
-		err := json.NewEncoder(*w).Encode(pwcGrJson)
+		(*w).Header().Set("content-type", "application/json")
+		err := json.NewEncoder(*w).Encode(pwcGrJson[:limit])
 		if err != nil {
 			log.Fatal("Cannot decode from JSON", err)
 			return
@@ -149,6 +154,7 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 			topParentsGroups = append(topParentsGroups, Groups[i])
 		}
 	}
+	w.Header().Set("content-type", "application/json")
 	err := json.NewEncoder(w).Encode(topParentsGroups)
 	if err != nil {
 		log.Fatal("Cannot decode from JSON", err)
@@ -162,18 +168,27 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
 		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusNotFound)
+		(w).WriteHeader(http.StatusBadRequest)
 	}
-	//ascending sort
-	index := sort2.Search(len(Groups), func(i int) bool {
-		return Groups[i].GroupID == id
-	})
+	//search by id
+	index := 0
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].GroupID == id {
+			index = i
+			break
+		}
+	}
 	if index == len(Groups) {
 		(w).WriteHeader(http.StatusNotFound)
 		return
 	}
-	json.NewEncoder(w).Encode(Groups[index])
-
+	w.Header().Set("content-type", "application/json")
+	err = json.NewEncoder(w).Encode(Groups[index])
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
 //Output chids of group with GroupID == id
@@ -183,7 +198,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
 		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusNotFound)
+		(w).WriteHeader(http.StatusBadRequest)
 	}
 	//Search chids of group with GroupID == id
 	var childs []Group.Group
@@ -194,6 +209,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	//Encode and output found group
+	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(childs)
 	if err != nil {
 		log.Fatal("Cannot decode from JSON", err)
@@ -210,7 +226,8 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	var postGr Group.Group
 	err := json.NewDecoder(req.Body).Decode(&postGr)
 	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusBadRequest)
 	}
 	if postGr.GroupName == "" {
 		(w).WriteHeader(http.StatusBadRequest)
@@ -226,7 +243,7 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	(w).WriteHeader(http.StatusCreated)
 }
 
-////Change group with GroupID == id
+//Change group with GroupID == id
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
@@ -247,15 +264,20 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	//Search group with GroupID == id index
-	index := sort2.Search(len(Groups), func(i int) bool {
-		return Groups[i].GroupID == id
-	})
+	index := 0
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].GroupID == id {
+			index = i
+			break
+		}
+	}
 	if index == len(Groups) {
 		(w).WriteHeader(http.StatusNotFound)
 		return
 	}
 	//Encode and output found group
 	Groups[index] = postGr
+	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
 		log.Fatal("Cannot decode from JSON", err)
@@ -263,15 +285,125 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+//Delete group with GroupID = id and without children and tasks
 func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	id, err := strconv.Atoi(vars["id"])
 
+	if err != nil {
+		fmt.Println("Cannot convert id to int")
+		(w).WriteHeader(http.StatusBadRequest)
+	}
+	//search index of element
+	index := 0
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].GroupID == id {
+			index = i
+			break
+		}
+	}
+	//does it have children
+	badID := true
+	for i := 0; i < len(Groups); i++ {
+		if Groups[i].ParentID == id {
+			badID = false
+			break
+		}
+	}
+	//does it have tasks
+	if badID == true {
+		for i := 0; i < len(Tasks); i++ {
+			if Tasks[i].GroupID == id {
+				badID = false
+				break
+			}
+		}
+	} else {
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
+	Groups = del(Groups, index)
 }
 
-func GetTasksSort(w http.ResponseWriter, req *http.Request) {
-	//sort := req.URL.Query().Get("sort")
-	//limit :=req.URL.Query().Get("limit")
-	//typeof := req.URL.Query().Get("type")
+func del(arr []Group.Group, n int) (outputArr []Group.Group) {
+	for i := 0; i < len(arr); i++ {
+		if i != n {
+			outputArr = append(outputArr, arr[i])
+		}
+	}
+	return outputArr
+}
 
+//Output tasks by sort, limit and type clarifications
+func GetTasksSort(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	sort, srtOk := req.Form["sort"]
+	limitstr, limOk := req.Form["limit"]
+	typeOf, typeOk := req.Form["type"]
+
+	var limit int
+	if !limOk {
+		limit = len(Tasks)
+	} else {
+		var err error
+		limit, err = strconv.Atoi(limitstr[0])
+		if err != nil {
+			fmt.Println("Cannot convert limit to int")
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		if (limit > len(Tasks)) || (limit == 0) {
+			limit = len(Tasks)
+		}
+	}
+
+	getTasks := Tasks
+	//Sort by type
+	if typeOk {
+		switch typeOf[0] {
+		case "completed":
+			getTasks = tasksTypeSort(Tasks, true)
+			break
+		case "working":
+			getTasks = tasksTypeSort(Tasks, false)
+			break
+		default:
+			break
+		}
+	}
+
+	//Sort by sort type
+	if srtOk {
+		switch sort[0] {
+		case "name":
+			sort2.SliceStable(getTasks, func(i, j int) bool {
+				return getTasks[i].Task < getTasks[j].Task
+			})
+			break
+		case "group":
+			sort2.SliceStable(getTasks, func(i, j int) bool {
+				return getTasks[i].GroupID < getTasks[j].GroupID
+			})
+		default:
+			break
+		}
+	}
+	//Output
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(getTasks[:limit])
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
+}
+
+func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
+	for i := 0; i < len(tasks); i++ {
+		if tasks[i].Completed == typeof {
+			outputTasks = append(outputTasks, tasks[i])
+		}
+	}
+	return outputTasks
 }
 
 func PostNewTasks(w http.ResponseWriter, req *http.Request) {

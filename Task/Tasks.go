@@ -16,7 +16,7 @@ type Task struct {
 	CompletedAt time.Time `json:"completed_at"`
 }
 
-func JsonTaskOutput(writeGr []Task) /*(fileWriteErr error, jsonEncodeErr error)*/ {
+func JsonTaskOutput(writeGr []Task) {
 	btResult, fileWriteErr := json.MarshalIndent(&writeGr, "", "  ")
 	if fileWriteErr != nil {
 		log.Fatal("Cannot encode to JSON", fileWriteErr)
@@ -25,17 +25,16 @@ func JsonTaskOutput(writeGr []Task) /*(fileWriteErr error, jsonEncodeErr error)*
 	if jsonEncodeErr != nil {
 		log.Fatal("Cannot write data to file", jsonEncodeErr)
 	}
-	/*return fileWriteErr, jsonEncodeErr*/
 }
 
-func JsonTaskInput() ( /*fileReadErr error, jsonDecodeErr error, */ readTask []Task) {
-	jsonGr, fileReadErr := ioutil.ReadFile("Tasks.json")
+func JsonTaskInput() (readTask []Task) {
+	jsonTask, fileReadErr := ioutil.ReadFile("Tasks.json")
 	if fileReadErr != nil {
 		log.Fatal("Cannot read data from file", fileReadErr)
 	}
-	jsonDecodeErr := json.Unmarshal(jsonGr, &readTask)
+	jsonDecodeErr := json.Unmarshal(jsonTask, &readTask)
 	if jsonDecodeErr != nil {
 		log.Fatal("Cannot decode from JSON", jsonDecodeErr)
 	}
-	return /*fileReadErr, jsonDecodeErr,*/ readTask
+	return readTask
 }
