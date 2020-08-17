@@ -3,12 +3,16 @@ package main
 import (
 	"WebCLI/Group"
 	"WebCLI/Task"
+	"context"
 	"crypto/md5"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	sort2 "sort"
 	"strconv"
 	"time"
@@ -18,6 +22,10 @@ var Tasks []Task.Task
 var Groups []Group.Group
 
 func main() {
+	var wait time.Duration
+	flag.DurationVar(&wait, "graceful-timeout", time.Second*15, "the duration for which the server gracefully wait for existing connections to finish - e.g. 15s or 1m")
+	flag.Parse()
+
 	Groups = Group.JsonGroupInput()
 	Tasks = Task.JsonTaskInput()
 	router := mux.NewRouter()
@@ -31,11 +39,50 @@ func main() {
 	router.HandleFunc("/tasks", GetTasksSort).Methods(http.MethodGet)
 	router.HandleFunc("/tasks/new", PostNewTasks).Methods(http.MethodPost)
 	router.HandleFunc("/tasks/{id}", PutTasksByID).Methods(http.MethodPut)
-	http.ListenAndServe(":8181", router)
-	defer Group.JsonGroupOutput(Groups)
+	router.HandleFunc("/tasks/group/{id}", GetTasksGroupByID).Methods(http.MethodGet)
+	router.HandleFunc("/tasks/{id}", PostTasksCompleteByID).Methods(http.MethodPost)
+	router.HandleFunc("/stat/today", GetStatToday).Methods(http.MethodGet)
+	router.HandleFunc("/stat/yesterday", GetStatYesterday).Methods(http.MethodGet)
+	router.HandleFunc("/stat/week", GetStatWeek).Methods(http.MethodGet)
+	router.HandleFunc("/stat/month", GetStatMonth).Methods(http.MethodGet)
+
+	srv := &http.Server{
+		Addr: "0.0.0.0:8181",
+		// Good practice to set timeouts to avoid Slowloris attacks.
+		WriteTimeout: time.Second * 15,
+		ReadTimeout:  time.Second * 15,
+		IdleTimeout:  time.Second * 60,
+		Handler:      router, // Pass our instance of gorilla/mux in.
+	}
+
+	// Run our server in a goroutine so that it doesn't block.
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	c := make(chan os.Signal, 1)
+	// We'll accept graceful shutdowns when quit via SIGINT (Ctrl+C)
+	// SIGKILL, SIGQUIT or SIGTERM (Ctrl+/) will not be caught.
+	signal.Notify(c, os.Interrupt)
+
+	// Block until we receive our signal.
+	<-c
+
+	// Create a deadline to wait for.
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	// Doesn't block if no connections, but will otherwise wait
+	// until the timeout deadline.
+	srv.Shutdown(ctx)
+	Task.JsonTaskOutput(Tasks)
+	Group.JsonGroupOutput(Groups)
+	log.Println("shutting down")
+	os.Exit(0)
 }
 
-func taskNGrIDToHashToString5(task string, grID int) (str string) {
+func taskNGrIDToHashToString6(task string, grID int) (str string) {
 	task += strconv.Itoa(grID)
 	hsh := md5.Sum([]byte(task))
 	str = fmt.Sprintf("%x", hsh)
@@ -56,12 +103,14 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	//sorted or unsorted output
 	if !srtOk {
 		unJsonedGr := Groups[:limit]
 		w.Header().Set("content-type", "application/json")
 		err := json.NewEncoder(w).Encode(unJsonedGr)
 		if err != nil {
-			log.Fatal("Cannot decode from JSON", err)
+			fmt.Println("Cannot encode to JSON", err)
+			(w).WriteHeader(http.StatusConflict)
 			return
 		}
 	} else {
@@ -101,7 +150,8 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
 		if err != nil {
-			log.Fatal("Cannot decode from JSON", err)
+			fmt.Println("Cannot encode to JSON", err)
+			(*w).WriteHeader(http.StatusConflict)
 			return
 		}
 		break
@@ -112,7 +162,8 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(subUnJsonedGr[:limit])
 		if err != nil {
-			log.Fatal("Cannot decode from JSON", err)
+			fmt.Println("Cannot encode to JSON", err)
+			(*w).WriteHeader(http.StatusConflict)
 			return
 		}
 		break
@@ -139,7 +190,8 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(pwcGrJson[:limit])
 		if err != nil {
-			log.Fatal("Cannot decode from JSON", err)
+			fmt.Println("Cannot encode to JSON", err)
+			(*w).WriteHeader(http.StatusConflict)
 			return
 		}
 		break
@@ -167,7 +219,8 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err := json.NewEncoder(w).Encode(topParentsGroups)
 	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
 		return
 	}
 }
@@ -195,7 +248,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
 		(w).WriteHeader(http.StatusConflict)
 		return
 	}
@@ -222,7 +275,8 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(childs)
 	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
 		return
 	}
 	if !exist {
@@ -251,6 +305,12 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	postGr.GroupID = Groups[len(Groups)-1].GroupID + 1
 	Groups = append(Groups, postGr)
 	(w).WriteHeader(http.StatusCreated)
+	err = json.NewEncoder(w).Encode(Groups[len(Groups)-1])
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
 //Change group with GroupID == id
@@ -266,7 +326,8 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	var postGr Group.Group
 	err = json.NewDecoder(req.Body).Decode(&postGr)
 	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusConflict)
 		return
 	}
 	if postGr.GroupName == "" {
@@ -274,23 +335,25 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	//Search group with GroupID == id index
-	index := 0
+	index := len(Groups)
 	for i := 0; i < len(Groups); i++ {
 		if Groups[i].GroupID == id {
 			index = i
 			break
 		}
 	}
-	if index == len(Groups) {
+	if index >= len(Groups) {
 		(w).WriteHeader(http.StatusNotFound)
 		return
 	}
 	//Encode and output found group
+	postGr.GroupID = id
 	Groups[index] = postGr
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
-		log.Fatal("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
 		return
 	}
 }
@@ -376,8 +439,12 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 		case "working":
 			getTasks = tasksTypeSort(Tasks, false)
 			break
-		default:
+		case "all":
 			break
+		default:
+			fmt.Println("Invalid type argument")
+			(w).WriteHeader(http.StatusBadRequest)
+			return
 		}
 	}
 
@@ -394,14 +461,16 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 				return getTasks[i].GroupID < getTasks[j].GroupID
 			})
 		default:
-			break
+			fmt.Println("Invalid sort argument")
+			(w).WriteHeader(http.StatusBadRequest)
+			return
 		}
 	}
 	//Output
 	w.Header().Set("content-type", "application/json")
 	err := json.NewEncoder(w).Encode(getTasks[:limit])
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
 		(w).WriteHeader(http.StatusConflict)
 		return
 	}
@@ -419,13 +488,16 @@ func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 
 //Input new task in Tasks
 func PostNewTasks(w http.ResponseWriter, req *http.Request) {
-	var postTask Task.Task
-	err := json.NewDecoder(req.Body).Decode(&postTask)
+	var postInputTask Task.Task
+	err := json.NewDecoder(req.Body).Decode(&postInputTask)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusBadRequest)
 		return
 	}
+	var postTask Task.Task
+	postTask.Task = postInputTask.Task
+	postTask.GroupID = postInputTask.GroupID
 	if postTask.Task == "" {
 		(w).WriteHeader(http.StatusBadRequest)
 		return
@@ -442,7 +514,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	postTask.TaskID = taskNGrIDToHashToString5(postTask.Task, postTask.GroupID)
+	postTask.TaskID = taskNGrIDToHashToString6(postTask.Task, postTask.GroupID)
 
 	//Chreck for matching task
 	for i := 0; i < len(Tasks); i++ {
@@ -461,7 +533,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Tasks[len(Tasks)-1])
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
 		(w).WriteHeader(http.StatusConflict)
 		return
 	}
@@ -485,13 +557,16 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var postTask Task.Task
-	err := json.NewDecoder(req.Body).Decode(&postTask)
+	var postInputTask Task.Task
+	err := json.NewDecoder(req.Body).Decode(&postInputTask)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusBadRequest)
 		return
 	}
+	var postTask Task.Task
+	postTask.Task = postInputTask.Task
+	postTask.GroupID = postInputTask.GroupID
 	if postTask.Task == "" {
 		(w).WriteHeader(http.StatusBadRequest)
 		return
@@ -508,7 +583,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	postTask.TaskID = taskNGrIDToHashToString5(postTask.Task, postTask.GroupID)
+	postTask.TaskID = taskNGrIDToHashToString6(postTask.Task, postTask.GroupID)
 
 	//Check for matching task
 	for i := 0; i < len(Tasks); i++ {
@@ -526,33 +601,215 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Tasks[index])
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
+		fmt.Println("Cannot encode to JSON", err)
 		(w).WriteHeader(http.StatusConflict)
 		return
 	}
 	(w).WriteHeader(http.StatusCreated)
 }
 
+//Output tasks of group with GroupID == id
 func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
-	//type := req.URL.Query().Get("type")
+	typeOf, typeOk := req.Form["type"]
+	vars := mux.Vars(req)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		fmt.Println("Cannot convert id to int")
+		(w).WriteHeader(http.StatusBadRequest)
+	}
+
+	var sortedTasks []Task.Task
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].GroupID == id {
+			sortedTasks = append(sortedTasks, Tasks[i])
+		}
+	}
+	if typeOk {
+		switch typeOf[0] {
+		case "completed":
+			sortedTasks = tasksTypeSort(Tasks, true)
+			break
+		case "working":
+			sortedTasks = tasksTypeSort(Tasks, false)
+			break
+		case "all":
+			break
+		default:
+			fmt.Println("Invalid type")
+			(w).WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+
+	w.Header().Set("content-type", "application/json")
+	err = json.NewEncoder(w).Encode(sortedTasks)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
+//Changeing complete status of task
 func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	finish, finOk := req.Form["finished"]
+	vars := mux.Vars(req)
+	id := vars["id"]
 
+	index := len(Tasks)
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].TaskID == id {
+			index = i
+			break
+		}
+	}
+	if index >= len(Tasks) {
+		(w).WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	if !finOk {
+		fmt.Println("Missing request argument")
+		(w).WriteHeader(http.StatusBadRequest)
+	}
+
+	switch finish[0] {
+	case "true":
+		Tasks[index].Completed = true
+		Tasks[index].CompletedAt = time.Now()
+		break
+	case "false":
+		Tasks[index].Completed = false
+		var nilTime time.Time
+		Tasks[index].CompletedAt = nilTime
+		break
+	default:
+		fmt.Println("Invalid request argument")
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(Tasks[index])
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
+//Output tasks completed today
 func GetStatToday(w http.ResponseWriter, req *http.Request) {
+	tasksCount := make(map[string]int)
+	tasksCount["completed"] = 0
+	tasksCount["created"] = 0
+	timeNow := time.Now()
+	nowYear, nowMonth, nowDay := timeNow.Date()
 
+	for i := 0; i < len(Tasks); i++ {
+		crYear, crMonth, crDay := Tasks[i].CreatedAt.Date()
+		if (crYear == nowYear) && (crMonth == nowMonth) && (crDay == nowDay) {
+			tasksCount["created"]++
+		}
+		if Tasks[i].Completed {
+			comYear, comMonth, comDay := Tasks[i].CompletedAt.Date()
+			if (comYear == nowYear) && (comMonth == nowMonth) && (comDay == nowDay) {
+				tasksCount["completed"]++
+			}
+		}
+	}
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(tasksCount)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
+//Output tasks completed yesterday
 func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
+	tasksCount := make(map[string]int)
+	tasksCount["completed"] = 0
+	tasksCount["created"] = 0
+	timeNow := time.Now().AddDate(0, 0, -1)
+	nowYear, nowMonth, nowDay := timeNow.Date()
 
+	for i := 0; i < len(Tasks); i++ {
+		crYear, crMonth, crDay := Tasks[i].CreatedAt.Date()
+		if (crYear == nowYear) && (crMonth == nowMonth) && (crDay == nowDay) {
+			tasksCount["created"]++
+		}
+		if Tasks[i].Completed {
+			comYear, comMonth, comDay := Tasks[i].CompletedAt.Date()
+			if (comYear == nowYear) && (comMonth == nowMonth) && (comDay == nowDay) {
+				tasksCount["completed"]++
+			}
+		}
+	}
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(tasksCount)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
+//Output tasks completed within a week
 func GetStatWeek(w http.ResponseWriter, req *http.Request) {
+	tasksCount := make(map[string]int)
+	tasksCount["completed"] = 0
+	tasksCount["created"] = 0
+	timeNow := time.Now()
+	timeWeekAgo := time.Now().AddDate(0, 0, -7)
+	weekDur := timeNow.Sub(timeWeekAgo)
 
+	for i := 0; i < len(Tasks); i++ {
+		if timeNow.Sub(Tasks[i].CreatedAt) <= weekDur {
+			tasksCount["created"]++
+		}
+		if Tasks[i].Completed {
+			if timeNow.Sub(Tasks[i].CompletedAt) <= weekDur {
+				tasksCount["completed"]++
+			}
+		}
+	}
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(tasksCount)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
 
+//Output tasks completed within a month
 func GetStatMonth(w http.ResponseWriter, req *http.Request) {
+	tasksCount := make(map[string]int)
+	tasksCount["completed"] = 0
+	tasksCount["created"] = 0
+	timeNow := time.Now()
+	timeMonthAgo := time.Now().AddDate(0, -1, 0)
+	monthDur := timeNow.Sub(timeMonthAgo)
 
+	for i := 0; i < len(Tasks); i++ {
+		if timeNow.Sub(Tasks[i].CreatedAt) <= monthDur {
+			tasksCount["created"]++
+		}
+		if Tasks[i].Completed {
+			if timeNow.Sub(Tasks[i].CompletedAt) <= monthDur {
+				tasksCount["completed"]++
+			}
+		}
+	}
+	w.Header().Set("content-type", "application/json")
+	err := json.NewEncoder(w).Encode(tasksCount)
+	if err != nil {
+		fmt.Println("Cannot encode to JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
 }
