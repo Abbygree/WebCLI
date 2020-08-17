@@ -3,6 +3,7 @@ package main
 import (
 	"WebCLI/Group"
 	"WebCLI/Task"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	sort2 "sort"
 	"strconv"
+	"time"
 )
 
 var Tasks []Task.Task
@@ -18,7 +20,6 @@ var Groups []Group.Group
 func main() {
 	Groups = Group.JsonGroupInput()
 	Tasks = Task.JsonTaskInput()
-	fmt.Println()
 	router := mux.NewRouter()
 	router.HandleFunc("/groups", GetGroups).Methods(http.MethodGet)
 	router.HandleFunc("/group/top_parents", GetGroupTopParents).Methods(http.MethodGet)
@@ -28,8 +29,17 @@ func main() {
 	router.HandleFunc("/group/{id}", PutGroupByID).Methods(http.MethodPut)
 	router.HandleFunc("/group/{id}", DeleteGroupByID).Methods(http.MethodDelete)
 	router.HandleFunc("/tasks", GetTasksSort).Methods(http.MethodGet)
+	router.HandleFunc("/tasks/new", PostNewTasks).Methods(http.MethodPost)
+	router.HandleFunc("/tasks/{id}", PutTasksByID).Methods(http.MethodPut)
 	http.ListenAndServe(":8181", router)
 	defer Group.JsonGroupOutput(Groups)
+}
+
+func taskNGrIDToHashToString5(task string, grID int) (str string) {
+	task += strconv.Itoa(grID)
+	hsh := md5.Sum([]byte(task))
+	str = fmt.Sprintf("%x", hsh)
+	return str[:6]
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
@@ -397,6 +407,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+//output array of completed or uncompleted tasks
 func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 	for i := 0; i < len(tasks); i++ {
 		if tasks[i].Completed == typeof {
@@ -406,19 +417,127 @@ func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 	return outputTasks
 }
 
+//Input new task in Tasks
 func PostNewTasks(w http.ResponseWriter, req *http.Request) {
+	var postTask Task.Task
+	err := json.NewDecoder(req.Body).Decode(&postTask)
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if postTask.Task == "" {
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
 
+	//Check for group existence
+	existGr := false
+	for i := 0; i < len(Groups); i++ {
+		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
+	}
+	if !existGr {
+		fmt.Println("This GroupID do not exists", err)
+		(w).WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	postTask.TaskID = taskNGrIDToHashToString5(postTask.Task, postTask.GroupID)
+
+	//Chreck for matching task
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].TaskID == postTask.TaskID {
+			fmt.Println("This task already exists", err)
+			(w).WriteHeader(http.StatusConflict)
+			return
+		}
+	}
+
+	postTask.Completed = false
+	postTask.CreatedAt = time.Now()
+	Tasks = append(Tasks, postTask)
+
+	//Output
+	w.Header().Set("content-type", "application/json")
+	err = json.NewEncoder(w).Encode(Tasks[len(Tasks)-1])
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
+	(w).WriteHeader(http.StatusCreated)
 }
 
+//Changing exist task
 func PutTasksByID(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	id := vars["id"]
+	//search by id
+	index := len(Tasks)
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].TaskID == id {
+			index = i
+			break
+		}
+	}
+	if index >= len(Tasks) {
+		(w).WriteHeader(http.StatusNotFound)
+		return
+	}
 
+	var postTask Task.Task
+	err := json.NewDecoder(req.Body).Decode(&postTask)
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if postTask.Task == "" {
+		(w).WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	//Check for group existence
+	existGr := false
+	for i := 0; i < len(Groups); i++ {
+		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
+	}
+	if !existGr {
+		fmt.Println("This GroupID do not exists", err)
+		(w).WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	postTask.TaskID = taskNGrIDToHashToString5(postTask.Task, postTask.GroupID)
+
+	//Check for matching task
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].TaskID == postTask.TaskID {
+			fmt.Println("This task already exists", err)
+			(w).WriteHeader(http.StatusConflict)
+			return
+		}
+	}
+
+	postTask.Completed = false
+	postTask.CreatedAt = time.Now()
+
+	Tasks[index] = postTask
+	w.Header().Set("content-type", "application/json")
+	err = json.NewEncoder(w).Encode(Tasks[index])
+	if err != nil {
+		fmt.Println("Cannot decode from JSON", err)
+		(w).WriteHeader(http.StatusConflict)
+		return
+	}
+	(w).WriteHeader(http.StatusCreated)
 }
 
 func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
 	//type := req.URL.Query().Get("type")
 }
 
-func PostTasksByID(w http.ResponseWriter, req *http.Request) {
+func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 
 }
 
