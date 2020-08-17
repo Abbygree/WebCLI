@@ -46,6 +46,7 @@ func main() {
 	router.HandleFunc("/stat/week", GetStatWeek).Methods(http.MethodGet)
 	router.HandleFunc("/stat/month", GetStatMonth).Methods(http.MethodGet)
 
+	//Graceful shutdown
 	srv := &http.Server{
 		Addr: "0.0.0.0:8181",
 		// Good practice to set timeouts to avoid Slowloris attacks.
