@@ -9,6 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"log"
 	"net/http"
 	"os"

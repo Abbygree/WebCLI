@@ -21,7 +21,7 @@ func JsonTaskOutput(writeGr []Task) {
 	if fileWriteErr != nil {
 		log.Fatal("Cannot encode to JSON", fileWriteErr)
 	}
-	jsonEncodeErr := ioutil.WriteFile("Task.json", btResult, 0777)
+	jsonEncodeErr := ioutil.WriteFile("Tasks.json", btResult, 0777)
 	if jsonEncodeErr != nil {
 		log.Fatal("Cannot write data to file", jsonEncodeErr)
 	}
