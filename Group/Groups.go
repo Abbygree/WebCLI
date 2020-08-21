@@ -14,7 +14,7 @@ type Group struct {
 }
 
 func JsonGroupInput() (readGr []Group) {
-	jsonGr, fileReadErr := ioutil.ReadFile("Groups.json")
+	jsonGr, fileReadErr := ioutil.ReadFile("Group/Groups.json")
 	if fileReadErr != nil {
 		log.Fatal("Cannot read data from file", fileReadErr)
 	}
@@ -30,7 +30,7 @@ func JsonGroupOutput(writeGr []Group) {
 	if fileWriteErr != nil {
 		log.Fatal("Cannot encode to JSON", fileWriteErr)
 	}
-	jsonEncodeErr := ioutil.WriteFile("Groups.json", btResult, 0777)
+	jsonEncodeErr := ioutil.WriteFile("Group/Groups.json", btResult, 0777)
 	if jsonEncodeErr != nil {
 		log.Fatal("Cannot write data to file", jsonEncodeErr)
 	}

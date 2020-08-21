@@ -2,15 +2,16 @@ package main
 
 import (
 	"WebCLI/Group"
+	"WebCLI/Service"
 	"WebCLI/Task"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -83,6 +84,7 @@ func main() {
 	Group.JsonGroupOutput(Groups)
 	log.Println("shutting down")
 	os.Exit(0)
+
 }
 
 func taskNGrIDToHashToString6(task string, grID int) (str string) {
@@ -93,7 +95,11 @@ func taskNGrIDToHashToString6(task string, grID int) (str string) {
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
+	//var startTime, endTime time.Time
+	//startTime.VNow()
+	//defer endTime.VNow(); Service.ExecLog(w.g)
 	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	sort, srtOk := req.Form["sort"]
 	limitstr, limOk := req.Form["limit"]
 	var limit int
@@ -119,7 +125,9 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	} else {
 		GetGroupsSort(&w, req, sort[0], limit)
 	}
-
+	p := http.Response{}
+	p.Header = w.Header()
+	fmt.Println(p)
 }
 
 func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int) {
@@ -213,6 +221,8 @@ func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
 
 //Output group with GroupID == 0
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	var topParentsGroups []Group.Group
 	for i := 0; i < len(Groups); i++ {
 		if Groups[i].ParentID == 0 {
@@ -230,6 +240,8 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 
 //Output group with GroupID == id
 func GetGroupByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
@@ -259,6 +271,8 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 
 //Output chids of group with GroupID == id
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	var exist bool
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
@@ -289,12 +303,17 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 
 //Input new group
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
 	//Decode request body to Group type
 	var postGr Group.Group
-	err := json.NewDecoder(req.Body).Decode(&postGr)
+	var buf bytes.Buffer
+	bodyCopy := io.TeeReader(req.Body, &buf)
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
+	err := json.NewDecoder(&buf).Decode(&postGr)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusBadRequest)
+		return
 	}
 	if postGr.GroupName == "" {
 		(w).WriteHeader(http.StatusBadRequest)
@@ -314,10 +333,15 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 		(w).WriteHeader(http.StatusConflict)
 		return
 	}
+	(w).WriteHeader(http.StatusCreated)
 }
 
 //Change group with GroupID == id
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	var buf bytes.Buffer
+	bodyCopy := io.TeeReader(req.Body, &buf)
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 
@@ -327,7 +351,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	}
 	//Decode request body to Group type
 	var postGr Group.Group
-	err = json.NewDecoder(req.Body).Decode(&postGr)
+	err = json.NewDecoder(&buf).Decode(&postGr)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusConflict)
@@ -363,6 +387,8 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 
 //Delete group with GroupID = id and without children and tasks
 func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 
@@ -413,6 +439,7 @@ func del(arr []Group.Group, n int) (outputArr []Group.Group) {
 //Output tasks by sort, limit and type clarifications
 func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	sort, srtOk := req.Form["sort"]
 	limitstr, limOk := req.Form["limit"]
 	typeOf, typeOk := req.Form["type"]
@@ -491,8 +518,12 @@ func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 
 //Input new task in Tasks
 func PostNewTasks(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	var buf bytes.Buffer
+	bodyCopy := io.TeeReader(req.Body, &buf)
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
 	var postInputTask Task.Task
-	err := json.NewDecoder(req.Body).Decode(&postInputTask)
+	err := json.NewDecoder(&buf).Decode(&postInputTask)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusBadRequest)
@@ -545,6 +576,10 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 
 //Changing exist task
 func PutTasksByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	var buf bytes.Buffer
+	bodyCopy := io.TeeReader(req.Body, &buf)
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
 	vars := mux.Vars(req)
 	id := vars["id"]
 	//search by id
@@ -561,7 +596,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var postInputTask Task.Task
-	err := json.NewDecoder(req.Body).Decode(&postInputTask)
+	err := json.NewDecoder(&buf).Decode(&postInputTask)
 	if err != nil {
 		fmt.Println("Cannot decode from JSON", err)
 		(w).WriteHeader(http.StatusBadRequest)
@@ -613,6 +648,8 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 
 //Output tasks of group with GroupID == id
 func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	typeOf, typeOk := req.Form["type"]
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
@@ -657,6 +694,7 @@ func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
 //Changeing complete status of task
 func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	finish, finOk := req.Form["finished"]
 	vars := mux.Vars(req)
 	id := vars["id"]
@@ -705,6 +743,8 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 
 //Output tasks completed today
 func GetStatToday(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
 	tasksCount["completed"] = 0
 	tasksCount["created"] = 0
@@ -734,6 +774,8 @@ func GetStatToday(w http.ResponseWriter, req *http.Request) {
 
 //Output tasks completed yesterday
 func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
 	tasksCount["completed"] = 0
 	tasksCount["created"] = 0
@@ -763,6 +805,8 @@ func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 
 //Output tasks completed within a week
 func GetStatWeek(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
 	tasksCount["completed"] = 0
 	tasksCount["created"] = 0
@@ -791,6 +835,8 @@ func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 
 //Output tasks completed within a month
 func GetStatMonth(w http.ResponseWriter, req *http.Request) {
+	req.ParseForm()
+	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
 	tasksCount["completed"] = 0
 	tasksCount["created"] = 0

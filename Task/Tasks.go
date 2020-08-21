@@ -21,14 +21,14 @@ func JsonTaskOutput(writeGr []Task) {
 	if fileWriteErr != nil {
 		log.Fatal("Cannot encode to JSON", fileWriteErr)
 	}
-	jsonEncodeErr := ioutil.WriteFile("Tasks.json", btResult, 0777)
+	jsonEncodeErr := ioutil.WriteFile("Task/Tasks.json", btResult, 0777)
 	if jsonEncodeErr != nil {
 		log.Fatal("Cannot write data to file", jsonEncodeErr)
 	}
 }
 
 func JsonTaskInput() (readTask []Task) {
-	jsonTask, fileReadErr := ioutil.ReadFile("Tasks.json")
+	jsonTask, fileReadErr := ioutil.ReadFile("Task/Tasks.json")
 	if fileReadErr != nil {
 		log.Fatal("Cannot read data from file", fileReadErr)
 	}
