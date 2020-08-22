@@ -42,7 +42,7 @@ func main() {
 	router.HandleFunc("/tasks", GetTasksSort).Methods(http.MethodGet)
 	router.HandleFunc("/tasks/new", PostNewTasks).Methods(http.MethodPost)
 	router.HandleFunc("/tasks/{id}", PutTasksByID).Methods(http.MethodPut)
-	router.HandleFunc("/tasks/group/{id}", GetTasksGroupByID).Methods(http.MethodGet)
+	router.HandleFunc("/tasks/group/{id}", GetTasksByGroupID).Methods(http.MethodGet)
 	router.HandleFunc("/tasks/{id}", PostTasksCompleteByID).Methods(http.MethodPost)
 	router.HandleFunc("/stat/today", GetStatToday).Methods(http.MethodGet)
 	router.HandleFunc("/stat/yesterday", GetStatYesterday).Methods(http.MethodGet)
@@ -95,9 +95,16 @@ func taskNGrIDToHashToString6(task string, grID int) (str string) {
 }
 
 func GetGroups(w http.ResponseWriter, req *http.Request) {
-	//var startTime, endTime time.Time
-	//startTime.VNow()
-	//defer endTime.VNow(); Service.ExecLog(w.g)
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	sort, srtOk := req.Form["sort"]
@@ -118,19 +125,17 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		err := json.NewEncoder(w).Encode(unJsonedGr)
 		if err != nil {
-			fmt.Println("Cannot encode to JSON", err)
-			(w).WriteHeader(http.StatusConflict)
+			msg = "Cannot encode to JSON"
+			statCode = http.StatusInternalServerError
+			(w).WriteHeader(statCode)
 			return
 		}
 	} else {
-		GetGroupsSort(&w, req, sort[0], limit)
+		GetGroupsSort(&w, req, sort[0], limit, &statCode, &msg)
 	}
-	p := http.Response{}
-	p.Header = w.Header()
-	fmt.Println(p)
 }
 
-func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int) {
+func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int, statCode *int, msg *string) {
 
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
@@ -161,8 +166,9 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(subUnJsonedGr)
 		if err != nil {
-			fmt.Println("Cannot encode to JSON", err)
-			(*w).WriteHeader(http.StatusConflict)
+			*msg = "Cannot encode to JSON"
+			*statCode = http.StatusInternalServerError
+			(*w).WriteHeader(*statCode)
 			return
 		}
 		break
@@ -173,8 +179,9 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(subUnJsonedGr[:limit])
 		if err != nil {
-			fmt.Println("Cannot encode to JSON", err)
-			(*w).WriteHeader(http.StatusConflict)
+			*msg = "Cannot encode to JSON"
+			*statCode = http.StatusInternalServerError
+			(*w).WriteHeader(*statCode)
 			return
 		}
 		break
@@ -183,7 +190,6 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 
 		for i := 0; i < len(parentsGr); i++ {
 			pwcGrJson = append(pwcGrJson, parentsGr[i])
-
 			for j := 0; j < len(childsGr); j++ {
 				//Search childs
 				if childsGr[j].ParentID == parentsGr[i].GroupID {
@@ -198,16 +204,20 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 				}
 			}
 		}
+
 		(*w).Header().Set("content-type", "application/json")
 		err := json.NewEncoder(*w).Encode(pwcGrJson[:limit])
 		if err != nil {
-			fmt.Println("Cannot encode to JSON", err)
-			(*w).WriteHeader(http.StatusConflict)
+			*msg = "Cannot encode to JSON"
+			*statCode = http.StatusInternalServerError
+			(*w).WriteHeader(*statCode)
 			return
 		}
 		break
 	default:
-		(*w).WriteHeader(http.StatusBadRequest)
+		*msg = "Invalid arguments"
+		*statCode = http.StatusBadRequest
+		(*w).WriteHeader(*statCode)
 		break
 	}
 }
@@ -221,6 +231,16 @@ func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
 
 //Output group with GroupID == 0
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	var topParentsGroups []Group.Group
@@ -230,23 +250,35 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(topParentsGroups)
+	err = json.NewEncoder(w).Encode(topParentsGroups)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output group with GroupID == id
 func GetGroupByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot convert id to int"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 	}
 	//search by id
 	index := 0
@@ -257,28 +289,42 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if index == len(Groups) {
-		(w).WriteHeader(http.StatusNotFound)
+		msg = "Group with that id does not exist"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
 		return
 	}
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output chids of group with GroupID == id
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	var exist bool
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot convert id to int"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 	}
 	//Search chids of group with GroupID == id
 	var childs []Group.Group
@@ -292,31 +338,48 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(childs)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 	if !exist {
-		(w).WriteHeader(http.StatusNotFound)
+		msg = "Group children not found"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
+		return
 	}
 }
 
 //Input new group
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	//Decode request body to Group type
 	var postGr Group.Group
 	var buf bytes.Buffer
 	bodyCopy := io.TeeReader(req.Body, &buf)
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
-	err := json.NewDecoder(&buf).Decode(&postGr)
+	err = json.NewDecoder(&buf).Decode(&postGr)
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot decode from JSON"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	if postGr.GroupName == "" {
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Field group_name cannot be empty"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	//ascending sort
@@ -326,11 +389,11 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	//Input new group in Groups
 	postGr.GroupID = Groups[len(Groups)-1].GroupID + 1
 	Groups = append(Groups, postGr)
-	(w).WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(Groups[len(Groups)-1])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 	(w).WriteHeader(http.StatusCreated)
@@ -338,6 +401,16 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 
 //Change group with GroupID == id
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	var buf bytes.Buffer
 	bodyCopy := io.TeeReader(req.Body, &buf)
@@ -346,19 +419,24 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 
 	if err != nil {
-		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot convert id to int"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
+		return
 	}
 	//Decode request body to Group type
 	var postGr Group.Group
 	err = json.NewDecoder(&buf).Decode(&postGr)
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot decode from JSON"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	if postGr.GroupName == "" {
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Field group_name cannot be empty"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	//Search group with GroupID == id index
@@ -369,8 +447,10 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 	}
-	if index >= len(Groups) {
-		(w).WriteHeader(http.StatusNotFound)
+	if index == len(Groups) {
+		msg = "Group with that id does not exist"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
 		return
 	}
 	//Encode and output found group
@@ -379,52 +459,73 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Groups[index])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
+	(w).WriteHeader(http.StatusCreated)
 }
 
 //Delete group with GroupID = id and without children and tasks
 func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	vars := mux.Vars(req)
 	id, err := strconv.Atoi(vars["id"])
 
 	if err != nil {
-		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot convert id to int"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 	}
 	//search index of element
-	index := 0
+	index := len(Groups)
 	for i := 0; i < len(Groups); i++ {
 		if Groups[i].GroupID == id {
 			index = i
 			break
 		}
 	}
+
+	if index == len(Groups) {
+		msg = "Group with that id does not exist"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
+		return
+	}
 	//does it have children
-	badID := true
 	for i := 0; i < len(Groups); i++ {
 		if Groups[i].ParentID == id {
-			badID = false
-			break
+			msg = "Group have the children"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
+			return
 		}
 	}
 	//does it have tasks
-	if badID == true {
-		for i := 0; i < len(Tasks); i++ {
-			if Tasks[i].GroupID == id {
-				badID = false
-				break
-			}
+	for i := 0; i < len(Tasks); i++ {
+		if Tasks[i].GroupID == id {
+			msg = "Group have the tasks"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
+			return
 		}
-	} else {
-		(w).WriteHeader(http.StatusConflict)
-		return
+
+		Groups = del(Groups, index)
 	}
-	Groups = del(Groups, index)
+	statCode = http.StatusOK
+	(w).WriteHeader(statCode)
 }
 
 func del(arr []Group.Group, n int) (outputArr []Group.Group) {
@@ -438,6 +539,16 @@ func del(arr []Group.Group, n int) (outputArr []Group.Group) {
 
 //Output tasks by sort, limit and type clarifications
 func GetTasksSort(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	sort, srtOk := req.Form["sort"]
@@ -451,8 +562,10 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 		var err error
 		limit, err = strconv.Atoi(limitstr[0])
 		if err != nil {
-			fmt.Println("Cannot convert limit to int")
-			w.WriteHeader(http.StatusBadRequest)
+			msg = "Cannot convert limit to int"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
+			return
 		}
 		if (limit > len(Tasks)) || (limit == 0) {
 			limit = len(Tasks)
@@ -472,8 +585,9 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 		case "all":
 			break
 		default:
-			fmt.Println("Invalid type argument")
-			(w).WriteHeader(http.StatusBadRequest)
+			msg = "Invalid type argument"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
 			return
 		}
 	}
@@ -491,17 +605,19 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 				return getTasks[i].GroupID < getTasks[j].GroupID
 			})
 		default:
-			fmt.Println("Invalid sort argument")
-			(w).WriteHeader(http.StatusBadRequest)
+			msg = "Invalid sort argument"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
 			return
 		}
 	}
 	//Output
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(getTasks[:limit])
+	err = json.NewEncoder(w).Encode(getTasks[:limit])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
@@ -518,22 +634,35 @@ func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 
 //Input new task in Tasks
 func PostNewTasks(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	var buf bytes.Buffer
 	bodyCopy := io.TeeReader(req.Body, &buf)
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, bodyCopy, "")
 	var postInputTask Task.Task
-	err := json.NewDecoder(&buf).Decode(&postInputTask)
+	err = json.NewDecoder(&buf).Decode(&postInputTask)
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot decode from JSON"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	var postTask Task.Task
 	postTask.Task = postInputTask.Task
 	postTask.GroupID = postInputTask.GroupID
 	if postTask.Task == "" {
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Field group_name cannot be empty"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 
@@ -543,8 +672,9 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
 	}
 	if !existGr {
-		fmt.Println("This GroupID do not exists", err)
-		(w).WriteHeader(http.StatusNotFound)
+		msg = "This GroupID do not exists"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
 		return
 	}
 
@@ -553,8 +683,9 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	//Chreck for matching task
 	for i := 0; i < len(Tasks); i++ {
 		if Tasks[i].TaskID == postTask.TaskID {
-			fmt.Println("This task already exists", err)
-			(w).WriteHeader(http.StatusConflict)
+			msg = "This task already exists"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
 			return
 		}
 	}
@@ -567,8 +698,9 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Tasks[len(Tasks)-1])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 	(w).WriteHeader(http.StatusCreated)
@@ -576,6 +708,16 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 
 //Changing exist task
 func PutTasksByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	var buf bytes.Buffer
 	bodyCopy := io.TeeReader(req.Body, &buf)
@@ -590,23 +732,28 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 	}
-	if index >= len(Tasks) {
-		(w).WriteHeader(http.StatusNotFound)
+	if index == len(Tasks) {
+		msg = "Task with that id does not exist"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
 		return
 	}
 
 	var postInputTask Task.Task
-	err := json.NewDecoder(&buf).Decode(&postInputTask)
+	err = json.NewDecoder(&buf).Decode(&postInputTask)
 	if err != nil {
-		fmt.Println("Cannot decode from JSON", err)
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot decode from JSON"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 	var postTask Task.Task
 	postTask.Task = postInputTask.Task
 	postTask.GroupID = postInputTask.GroupID
 	if postTask.Task == "" {
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Field task cannot be empty"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 
@@ -616,8 +763,9 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
 	}
 	if !existGr {
-		fmt.Println("This GroupID do not exists", err)
-		(w).WriteHeader(http.StatusNotFound)
+		msg = "Group with this GroupID do not exists"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 
@@ -626,8 +774,9 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	//Check for matching task
 	for i := 0; i < len(Tasks); i++ {
 		if Tasks[i].TaskID == postTask.TaskID {
-			fmt.Println("This task already exists", err)
-			(w).WriteHeader(http.StatusConflict)
+			msg = "This task already exists"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
 			return
 		}
 	}
@@ -639,15 +788,26 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(Tasks[index])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 	(w).WriteHeader(http.StatusCreated)
 }
 
 //Output tasks of group with GroupID == id
-func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
+func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	typeOf, typeOk := req.Form["type"]
@@ -655,8 +815,9 @@ func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
 	id, err := strconv.Atoi(vars["id"])
 
 	if err != nil {
-		fmt.Println("Cannot convert id to int")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Cannot convert id to int"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 	}
 
 	var sortedTasks []Task.Task
@@ -676,8 +837,9 @@ func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
 		case "all":
 			break
 		default:
-			fmt.Println("Invalid type")
-			(w).WriteHeader(http.StatusBadRequest)
+			msg = "Invalid type argument"
+			statCode = http.StatusBadRequest
+			(w).WriteHeader(statCode)
 			return
 		}
 	}
@@ -685,16 +847,28 @@ func GetTasksGroupByID(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(sortedTasks)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Changeing complete status of task
 func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
+
 	finish, finOk := req.Form["finished"]
 	vars := mux.Vars(req)
 	id := vars["id"]
@@ -706,14 +880,17 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 	}
-	if index >= len(Tasks) {
-		(w).WriteHeader(http.StatusNotFound)
+	if index == len(Tasks) {
+		msg = "Task with that id does not exist"
+		statCode = http.StatusNotFound
+		(w).WriteHeader(statCode)
 		return
 	}
 
 	if !finOk {
-		fmt.Println("Missing request argument")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Missing request argument"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 	}
 
 	switch finish[0] {
@@ -727,22 +904,34 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 		Tasks[index].CompletedAt = nilTime
 		break
 	default:
-		fmt.Println("Invalid request argument")
-		(w).WriteHeader(http.StatusBadRequest)
+		msg = "Invalid request argument"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
 		return
 	}
 
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(Tasks[index])
+	err = json.NewEncoder(w).Encode(Tasks[index])
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output tasks completed today
 func GetStatToday(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
@@ -764,16 +953,27 @@ func GetStatToday(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(tasksCount)
+	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output tasks completed yesterday
 func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
@@ -795,16 +995,27 @@ func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(tasksCount)
+	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output tasks completed within a week
 func GetStatWeek(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
@@ -825,16 +1036,27 @@ func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(tasksCount)
+	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
 
 //Output tasks completed within a month
 func GetStatMonth(w http.ResponseWriter, req *http.Request) {
+	var err error
+	var msg string
+	statCode := http.StatusOK
+	var startTime, endTime time.Time
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+	}()
+
 	req.ParseForm()
 	Service.ReqInfoLog(req.Method, req.URL, req.Form, req.Body, "")
 	tasksCount := make(map[string]int)
@@ -855,10 +1077,11 @@ func GetStatMonth(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	w.Header().Set("content-type", "application/json")
-	err := json.NewEncoder(w).Encode(tasksCount)
+	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
-		fmt.Println("Cannot encode to JSON", err)
-		(w).WriteHeader(http.StatusConflict)
+		msg = "Cannot encode to JSON"
+		statCode = http.StatusInternalServerError
+		(w).WriteHeader(statCode)
 		return
 	}
 }
