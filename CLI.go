@@ -25,7 +25,7 @@ import (
 var Tasks []Task.Task
 var Groups []Group.Group
 
-//default values read from configuration file
+//TODO:default values read from configuration file
 var defaultGrLimit, defaultTaskLimit, defaultTaskGr int
 var port, defaultTaskComplete, defaultTaskType, defaultTaskSort string
 
@@ -96,6 +96,7 @@ func main() {
 
 }
 
+//TODO:Read configuration file and input in variables
 func configToDefaults(vp *viper.Viper) (p string, dgl int, dtc string, dtg int, dtl int, dtt string, dts string) {
 	vp.AddConfigPath("Service\\Config.toml")
 	p = vp.GetString("Application.port")
@@ -108,6 +109,7 @@ func configToDefaults(vp *viper.Viper) (p string, dgl int, dtc string, dtg int, 
 	return p, dgl, dtc, dtg, dtl, dtt, dts
 }
 
+//TODO:Hashing
 func taskNGrIDToHashToString6(task string, grID int) (str string) {
 	task += strconv.Itoa(grID)
 	hsh := md5.Sum([]byte(task))
@@ -115,6 +117,7 @@ func taskNGrIDToHashToString6(task string, grID int) (str string) {
 	return str[:6]
 }
 
+//TODO:Output groups at response
 func GetGroups(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -159,6 +162,7 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+//TODO:Sorting groups by GetGroup request parameters
 func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int, statCode *int, msg *string) {
 
 	//unmarshall json file to groups' slice and ascending sort by name
@@ -252,7 +256,7 @@ func grContain(arrGr []Group.Group, contGr Group.Group) (result bool) {
 	return result
 }
 
-//Output group with GroupID == 0
+//TODO:Output group with GroupID == 0
 func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -282,7 +286,7 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output group with GroupID == id
+//TODO:Output group with GroupID == id
 func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -327,7 +331,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output chids of group with GroupID == id
+//TODO:Output chids of group with GroupID == id
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -374,7 +378,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Input new group
+//TODO:Input new group
 func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -422,7 +426,7 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	(w).WriteHeader(http.StatusCreated)
 }
 
-//Change group with GroupID == id
+//TODO:Change group with GroupID == id
 func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -490,7 +494,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	(w).WriteHeader(http.StatusCreated)
 }
 
-//Delete group with GroupID = id and without children and tasks
+//TODO:Delete group with GroupID = id and without children and tasks
 func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -560,7 +564,7 @@ func del(arr []Group.Group, n int) (outputArr []Group.Group) {
 	return outputArr
 }
 
-//Output tasks by sort, limit and type clarifications
+//TODO:Output tasks by sort, limit and type clarifications
 func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -651,7 +655,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//output array of completed or uncompleted tasks
+//TODO:Output array of completed or uncompleted tasks
 func tasksTypeSort(tasks []Task.Task, typeof bool) (outputTasks []Task.Task) {
 	for i := 0; i < len(tasks); i++ {
 		if tasks[i].Completed == typeof {
@@ -713,7 +717,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 
 	postTask.TaskID = taskNGrIDToHashToString6(postTask.Task, postTask.GroupID)
 
-	//Chreck for matching task
+	//Check for matching task
 	for i := 0; i < len(Tasks); i++ {
 		if Tasks[i].TaskID == postTask.TaskID {
 			msg = "This task already exists"
@@ -739,7 +743,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	(w).WriteHeader(http.StatusCreated)
 }
 
-//Changing exist task
+//TODO:Changing exist task
 func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -833,7 +837,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	(w).WriteHeader(http.StatusCreated)
 }
 
-//Output tasks of group with GroupID == id
+//TODO:Output tasks of group with GroupID == id
 func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -894,7 +898,7 @@ func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Changeing complete status of task
+//TODO:Changeing complete status of task
 func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -959,7 +963,7 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output tasks completed today
+//TODO:Output tasks completed today
 func GetStatToday(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -1001,7 +1005,7 @@ func GetStatToday(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output tasks completed yesterday
+//TODO:Output tasks completed yesterday
 func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -1043,7 +1047,7 @@ func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output tasks completed within a week
+//TODO:Output tasks completed within a week
 func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -1084,7 +1088,7 @@ func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//Output tasks completed within a month
+//TODO:Output tasks completed within a month
 func GetStatMonth(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
