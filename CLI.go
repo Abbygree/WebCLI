@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
+	"github.com/spf13/viper"
 	"io"
 	"log"
 	"net/http"
@@ -24,7 +25,15 @@ import (
 var Tasks []Task.Task
 var Groups []Group.Group
 
+//default values read from configuration file
+var defaultGrLimit, defaultTaskLimit, defaultTaskGr int
+var port, defaultTaskComplete, defaultTaskType, defaultTaskSort string
+
 func main() {
+	vp := viper.New()
+	port, defaultGrLimit, _, _, _, _, _ = configToDefaults(vp)
+	_, _, defaultTaskComplete, defaultTaskLimit, defaultTaskGr, defaultTaskType, defaultTaskSort = configToDefaults(vp)
+
 	var wait time.Duration
 	flag.DurationVar(&wait, "graceful-timeout", time.Second*15, "the duration for which the server gracefully wait for existing connections to finish - e.g. 15s or 1m")
 	flag.Parse()
@@ -51,7 +60,7 @@ func main() {
 
 	//Graceful shutdown
 	srv := &http.Server{
-		Addr: "0.0.0.0:8181",
+		Addr: "0.0.0.0:" + port,
 		// Good practice to set timeouts to avoid Slowloris attacks.
 		WriteTimeout: time.Second * 15,
 		ReadTimeout:  time.Second * 15,
@@ -87,6 +96,18 @@ func main() {
 
 }
 
+func configToDefaults(vp *viper.Viper) (p string, dgl int, dtc string, dtg int, dtl int, dtt string, dts string) {
+	vp.AddConfigPath("Service\\Config.toml")
+	p = vp.GetString("Application.port")
+	dgl = vp.GetInt("Groups.default_limit")
+	dtc = vp.GetString("Tasks.default_complete")
+	dtg = vp.GetInt("Tasks.default_group")
+	dtl = vp.GetInt("Tasks.default_limit")
+	dtt = vp.GetString("Tasks.default_type")
+	dts = vp.GetString("Tasks.default_sort")
+	return p, dgl, dtc, dtg, dtl, dtt, dts
+}
+
 func taskNGrIDToHashToString6(task string, grID int) (str string) {
 	task += strconv.Itoa(grID)
 	hsh := md5.Sum([]byte(task))
@@ -102,7 +123,7 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -111,7 +132,8 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	limitstr, limOk := req.Form["limit"]
 	var limit int
 	if !limOk {
-		limit = len(Groups)
+		Service.WarnLog("GetGroups", "limit")
+		limit = defaultGrLimit
 	} else {
 		limit, _ = strconv.Atoi(limitstr[0])
 		if (limit > len(Groups)) || (limit == 0) {
@@ -120,7 +142,9 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	}
 
 	//sorted or unsorted output
+	sort2.SliceStable(Groups, func(i, j int) bool { return Groups[i].GroupName < Groups[j].GroupName })
 	if !srtOk {
+		Service.WarnLog("GetGroups", "sort")
 		unJsonedGr := Groups[:limit]
 		w.Header().Set("content-type", "application/json")
 		err := json.NewEncoder(w).Encode(unJsonedGr)
@@ -140,7 +164,6 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
 	unJsonedGr = Groups
-	sort2.SliceStable(unJsonedGr, func(i, j int) bool { return unJsonedGr[i].GroupName < unJsonedGr[j].GroupName })
 
 	//create the parents and childs subslices
 	for i := 0; i < len(unJsonedGr); i++ {
@@ -238,7 +261,7 @@ func GetGroupTopParents(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -268,7 +291,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -313,7 +336,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -360,7 +383,7 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -408,7 +431,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -476,7 +499,7 @@ func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -546,7 +569,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -557,7 +580,8 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 
 	var limit int
 	if !limOk {
-		limit = len(Tasks)
+		Service.WarnLog("GetTasksSort", "limit")
+		limit = defaultTaskLimit
 	} else {
 		var err error
 		limit, err = strconv.Atoi(limitstr[0])
@@ -574,43 +598,48 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 
 	getTasks := Tasks
 	//Sort by type
-	if typeOk {
-		switch typeOf[0] {
-		case "completed":
-			getTasks = tasksTypeSort(Tasks, true)
-			break
-		case "working":
-			getTasks = tasksTypeSort(Tasks, false)
-			break
-		case "all":
-			break
-		default:
-			msg = "Invalid type argument"
-			statCode = http.StatusBadRequest
-			(w).WriteHeader(statCode)
-			return
-		}
+	if !typeOk {
+		Service.WarnLog("GetTasksSort", "type")
+		typeOf[0] = defaultTaskType
+	}
+	switch typeOf[0] {
+	case "completed":
+		getTasks = tasksTypeSort(Tasks, true)
+		break
+	case "working":
+		getTasks = tasksTypeSort(Tasks, false)
+		break
+	case "all":
+		break
+	default:
+		msg = "Invalid type argument"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
+		return
 	}
 
 	//Sort by sort type
-	if srtOk {
-		switch sort[0] {
-		case "name":
-			sort2.SliceStable(getTasks, func(i, j int) bool {
-				return getTasks[i].Task < getTasks[j].Task
-			})
-			break
-		case "group":
-			sort2.SliceStable(getTasks, func(i, j int) bool {
-				return getTasks[i].GroupID < getTasks[j].GroupID
-			})
-		default:
-			msg = "Invalid sort argument"
-			statCode = http.StatusBadRequest
-			(w).WriteHeader(statCode)
-			return
-		}
+	if !srtOk {
+		Service.WarnLog("GetTasksSort", "sort")
+		sort[0] = defaultTaskSort
 	}
+	switch sort[0] {
+	case "name":
+		sort2.SliceStable(getTasks, func(i, j int) bool {
+			return getTasks[i].Task < getTasks[j].Task
+		})
+		break
+	case "group":
+		sort2.SliceStable(getTasks, func(i, j int) bool {
+			return getTasks[i].GroupID < getTasks[j].GroupID
+		})
+	default:
+		msg = "Invalid sort argument"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
+		return
+	}
+
 	//Output
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(getTasks[:limit])
@@ -641,7 +670,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -659,6 +688,10 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	var postTask Task.Task
 	postTask.Task = postInputTask.Task
 	postTask.GroupID = postInputTask.GroupID
+	if postTask.GroupID == 0 {
+		Service.WarnLog("PostNewTasks", "GroupId")
+		postTask.GroupID = defaultTaskGr
+	}
 	if postTask.Task == "" {
 		msg = "Field group_name cannot be empty"
 		statCode = http.StatusBadRequest
@@ -715,7 +748,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -755,6 +788,10 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
 		return
+	}
+	if postTask.GroupID == 0 {
+		Service.WarnLog("PostNewTasks", "GroupId")
+		postTask.GroupID = defaultTaskGr
 	}
 
 	//Check for group existence
@@ -805,7 +842,7 @@ func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -826,22 +863,25 @@ func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
 			sortedTasks = append(sortedTasks, Tasks[i])
 		}
 	}
-	if typeOk {
-		switch typeOf[0] {
-		case "completed":
-			sortedTasks = tasksTypeSort(Tasks, true)
-			break
-		case "working":
-			sortedTasks = tasksTypeSort(Tasks, false)
-			break
-		case "all":
-			break
-		default:
-			msg = "Invalid type argument"
-			statCode = http.StatusBadRequest
-			(w).WriteHeader(statCode)
-			return
-		}
+
+	if !typeOk {
+		Service.WarnLog("GetTasksSort", "type")
+		typeOf[0] = defaultTaskType
+	}
+	switch typeOf[0] {
+	case "completed":
+		sortedTasks = tasksTypeSort(Tasks, true)
+		break
+	case "working":
+		sortedTasks = tasksTypeSort(Tasks, false)
+		break
+	case "all":
+		break
+	default:
+		msg = "Invalid type argument"
+		statCode = http.StatusBadRequest
+		(w).WriteHeader(statCode)
+		return
 	}
 
 	w.Header().Set("content-type", "application/json")
@@ -863,7 +903,7 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -888,9 +928,8 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if !finOk {
-		msg = "Missing request argument"
-		statCode = http.StatusBadRequest
-		(w).WriteHeader(statCode)
+		Service.WarnLog("GetTasksSort", "type")
+		finish[0] = defaultTaskComplete
 	}
 
 	switch finish[0] {
@@ -929,7 +968,7 @@ func GetStatToday(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -971,7 +1010,7 @@ func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -1013,7 +1052,7 @@ func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
@@ -1054,7 +1093,7 @@ func GetStatMonth(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
-		Service.ErrExecLog(statCode, endTime.Sub(startTime).Milliseconds(), err, msg)
+		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
 	req.ParseForm()
