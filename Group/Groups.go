@@ -1,9 +1,10 @@
 package Group
 
 import (
+	"WebCLI/Service"
 	"encoding/json"
 	"io/ioutil"
-	"log"
+	"time"
 )
 
 type Group struct {
@@ -14,24 +15,46 @@ type Group struct {
 }
 
 func JsonGroupInput() (readGr []Group) {
+	var startTime, endTime time.Time
+	var err error
+	var msg string
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.NonRequestErrExecLog("JsonGroupInput", endTime.Sub(startTime), err, msg)
+	}()
+
 	jsonGr, fileReadErr := ioutil.ReadFile("Group/Groups.json")
 	if fileReadErr != nil {
-		log.Fatal("Cannot read data from file", fileReadErr)
+		err = fileReadErr
+		msg = "Cannot read data from file"
 	}
 	jsonDecodeErr := json.Unmarshal(jsonGr, &readGr)
 	if jsonDecodeErr != nil {
-		log.Fatal("Cannot decode from JSON", jsonDecodeErr)
+		err = jsonDecodeErr
+		msg = "Cannot decode from JSON"
 	}
 	return readGr
 }
 
 func JsonGroupOutput(writeGr []Group) {
+	var startTime, endTime time.Time
+	var err error
+	var msg string
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.NonRequestErrExecLog("JsonTaskOutput", endTime.Sub(startTime), err, msg)
+	}()
+
 	btResult, fileWriteErr := json.MarshalIndent(&writeGr, "", "  ")
 	if fileWriteErr != nil {
-		log.Fatal("Cannot encode to JSON", fileWriteErr)
+		err = fileWriteErr
+		msg = "Cannot encode to JSON"
 	}
 	jsonEncodeErr := ioutil.WriteFile("Group/Groups.json", btResult, 0777)
 	if jsonEncodeErr != nil {
-		log.Fatal("Cannot write data to file", jsonEncodeErr)
+		err = jsonEncodeErr
+		msg = "Cannot write data to file"
 	}
 }

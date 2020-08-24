@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/gorilla/mux"
@@ -98,7 +99,11 @@ func main() {
 
 //TODO:Read configuration file and input in variables
 func configToDefaults(vp *viper.Viper) (p string, dgl int, dtc string, dtg int, dtl int, dtt string, dts string) {
-	vp.AddConfigPath("Service\\Config.toml")
+	vp.SetConfigFile("Service\\Config.toml")
+	err := vp.ReadInConfig()
+	if err != nil {
+		Service.ErrExecLog(http.StatusInternalServerError, 0, err, "Configuration file read error")
+	}
 	p = vp.GetString("Application.port")
 	dgl = vp.GetInt("Groups.default_limit")
 	dtc = vp.GetString("Tasks.default_complete")
@@ -126,6 +131,7 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
+		Service.FuncWorkLog(strconv.Itoa(len(Groups)), "real size of group slice")
 		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
@@ -158,12 +164,12 @@ func GetGroups(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	} else {
-		GetGroupsSort(&w, req, sort[0], limit, &statCode, &msg)
+		GetGroupsSort(&w, req, sort[0], limit, &statCode, &msg, &err)
 	}
 }
 
 //TODO:Sorting groups by GetGroup request parameters
-func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int, statCode *int, msg *string) {
+func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit int, statCode *int, msg *string, err *error) {
 
 	//unmarshall json file to groups' slice and ascending sort by name
 	var unJsonedGr, parentsGr, childsGr, childGr, grandChildsGr []Group.Group
@@ -242,6 +248,7 @@ func GetGroupsSort(w *http.ResponseWriter, req *http.Request, sort string, limit
 		}
 		break
 	default:
+		*err = errors.New("")
 		*msg = "Invalid arguments"
 		*statCode = http.StatusBadRequest
 		(*w).WriteHeader(*statCode)
@@ -331,7 +338,7 @@ func GetGroupByID(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-//TODO:Output chids of group with GroupID == id
+//TODO:Output children of group with GroupID == id
 func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 	var err error
 	var msg string
@@ -371,6 +378,7 @@ func GetGroupChildsByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if !exist {
+		err = errors.New("")
 		msg = "Group children not found"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -404,6 +412,7 @@ func PostNewGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if postGr.GroupName == "" {
+		err = errors.New("")
 		msg = "Field group_name cannot be empty"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -461,6 +470,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if postGr.GroupName == "" {
+		err = errors.New("")
 		msg = "Field group_name cannot be empty"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -475,6 +485,7 @@ func PutGroupByID(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if index == len(Groups) {
+		err = errors.New("")
 		msg = "Group with that id does not exist"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -526,6 +537,7 @@ func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if index == len(Groups) {
+		err = errors.New("")
 		msg = "Group with that id does not exist"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -548,7 +560,6 @@ func DeleteGroupByID(w http.ResponseWriter, req *http.Request) {
 			(w).WriteHeader(statCode)
 			return
 		}
-
 		Groups = del(Groups, index)
 	}
 	statCode = http.StatusOK
@@ -573,6 +584,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	startTime = time.Now()
 	defer func() {
 		endTime = time.Now()
+		Service.FuncWorkLog(strconv.Itoa(len(Tasks)), "real size of task slice")
 		Service.ErrExecLog(statCode, endTime.Sub(startTime), err, msg)
 	}()
 
@@ -616,6 +628,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 	case "all":
 		break
 	default:
+		err = errors.New("")
 		msg = "Invalid type argument"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -638,6 +651,7 @@ func GetTasksSort(w http.ResponseWriter, req *http.Request) {
 			return getTasks[i].GroupID < getTasks[j].GroupID
 		})
 	default:
+		err = errors.New("")
 		msg = "Invalid sort argument"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -697,6 +711,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 		postTask.GroupID = defaultTaskGr
 	}
 	if postTask.Task == "" {
+		err = errors.New("")
 		msg = "Field group_name cannot be empty"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -709,6 +724,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
 	}
 	if !existGr {
+		err = errors.New("")
 		msg = "This GroupID do not exists"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -720,6 +736,7 @@ func PostNewTasks(w http.ResponseWriter, req *http.Request) {
 	//Check for matching task
 	for i := 0; i < len(Tasks); i++ {
 		if Tasks[i].TaskID == postTask.TaskID {
+			err = errors.New("")
 			msg = "This task already exists"
 			statCode = http.StatusBadRequest
 			(w).WriteHeader(statCode)
@@ -770,6 +787,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if index == len(Tasks) {
+		err = errors.New("")
 		msg = "Task with that id does not exist"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -788,6 +806,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	postTask.Task = postInputTask.Task
 	postTask.GroupID = postInputTask.GroupID
 	if postTask.Task == "" {
+		err = errors.New("")
 		msg = "Field task cannot be empty"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -804,6 +823,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 		existGr = existGr || (Groups[i].GroupID == postTask.GroupID)
 	}
 	if !existGr {
+		err = errors.New("")
 		msg = "Group with this GroupID do not exists"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -815,6 +835,7 @@ func PutTasksByID(w http.ResponseWriter, req *http.Request) {
 	//Check for matching task
 	for i := 0; i < len(Tasks); i++ {
 		if Tasks[i].TaskID == postTask.TaskID {
+			err = errors.New("")
 			msg = "This task already exists"
 			statCode = http.StatusBadRequest
 			(w).WriteHeader(statCode)
@@ -882,6 +903,7 @@ func GetTasksByGroupID(w http.ResponseWriter, req *http.Request) {
 	case "all":
 		break
 	default:
+		err = errors.New("")
 		msg = "Invalid type argument"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -925,6 +947,7 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	if index == len(Tasks) {
+		err = errors.New("")
 		msg = "Task with that id does not exist"
 		statCode = http.StatusNotFound
 		(w).WriteHeader(statCode)
@@ -947,6 +970,7 @@ func PostTasksCompleteByID(w http.ResponseWriter, req *http.Request) {
 		Tasks[index].CompletedAt = nilTime
 		break
 	default:
+		err = errors.New("")
 		msg = "Invalid request argument"
 		statCode = http.StatusBadRequest
 		(w).WriteHeader(statCode)
@@ -995,6 +1019,11 @@ func GetStatToday(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	tmp, _ := json.Marshal(tasksCount)
+	logOut := string(tmp)
+	Service.FuncWorkLog(logOut, "called in function GetStatToday")
+
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
@@ -1037,6 +1066,11 @@ func GetStatYesterday(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	tmp, _ := json.Marshal(tasksCount)
+	logOut := string(tmp)
+	Service.FuncWorkLog(logOut, "called in function GetStatYesterday")
+
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
@@ -1078,6 +1112,11 @@ func GetStatWeek(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	tmp, _ := json.Marshal(tasksCount)
+	logOut := string(tmp)
+	Service.FuncWorkLog(logOut, "called in function GetStatWeek")
+
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {
@@ -1119,6 +1158,11 @@ func GetStatMonth(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	tmp, _ := json.Marshal(tasksCount)
+	logOut := string(tmp)
+	Service.FuncWorkLog(logOut, "called in function GetStatMonth")
+
 	w.Header().Set("content-type", "application/json")
 	err = json.NewEncoder(w).Encode(tasksCount)
 	if err != nil {

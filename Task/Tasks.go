@@ -1,9 +1,9 @@
 package Task
 
 import (
+	"WebCLI/Service"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"time"
 )
 
@@ -17,24 +17,46 @@ type Task struct {
 }
 
 func JsonTaskOutput(writeGr []Task) {
+	var startTime, endTime time.Time
+	var err error
+	var msg string
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.NonRequestErrExecLog("JsonTaskOutput", endTime.Sub(startTime), err, msg)
+	}()
+
 	btResult, fileWriteErr := json.MarshalIndent(&writeGr, "", "  ")
 	if fileWriteErr != nil {
-		log.Fatal("Cannot encode to JSON", fileWriteErr)
+		err = fileWriteErr
+		msg = "Cannot encode to JSON"
 	}
 	jsonEncodeErr := ioutil.WriteFile("Task/Tasks.json", btResult, 0777)
 	if jsonEncodeErr != nil {
-		log.Fatal("Cannot write data to file", jsonEncodeErr)
+		err = jsonEncodeErr
+		msg = "Cannot write data to file"
 	}
 }
 
 func JsonTaskInput() (readTask []Task) {
+	var startTime, endTime time.Time
+	var err error
+	var msg string
+	startTime = time.Now()
+	defer func() {
+		endTime = time.Now()
+		Service.NonRequestErrExecLog("JsonTaskInput", endTime.Sub(startTime), err, msg)
+	}()
+
 	jsonTask, fileReadErr := ioutil.ReadFile("Task/Tasks.json")
 	if fileReadErr != nil {
-		log.Fatal("Cannot read data from file", fileReadErr)
+		err = fileReadErr
+		msg = "Cannot read data from file"
 	}
 	jsonDecodeErr := json.Unmarshal(jsonTask, &readTask)
 	if jsonDecodeErr != nil {
-		log.Fatal("Cannot decode from JSON", jsonDecodeErr)
+		err = jsonDecodeErr
+		msg = "Cannot decode from JSON"
 	}
 	return readTask
 }
